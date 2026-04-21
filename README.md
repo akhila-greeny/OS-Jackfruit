@@ -1,111 +1,255 @@
-# Multi-Container Runtime
+# Multi-Container Runtime in C
 
-A lightweight Linux container runtime in C with a long-running supervisor and a kernel-space memory monitor.
+## Project Overview
 
-Read [`project-guide.md`](project-guide.md) for the full project specification.
+This project implements a lightweight container runtime in C on Linux. The system consists of a long-running supervisor process and a kernel-space memory monitoring module.
+
+Containers are implemented as isolated processes using operating system features such as namespaces, chroot, and system calls. The supervisor manages container lifecycle operations, while the kernel module monitors memory usage and enforces limits.
+
+The project demonstrates key operating system concepts including process management, inter-process communication, synchronization, memory management, and scheduling.
 
 ---
 
-## Getting Started
+## System Architecture
 
-### 1. Fork the Repository
+The system has two main components:
 
-1. Go to [github.com/shivangjhalani/OS-Jackfruit](https://github.com/shivangjhalani/OS-Jackfruit)
-2. Click **Fork** (top-right)
-3. Clone your fork:
+### 1. Supervisor (User Space)
 
-```bash
-git clone https://github.com/<your-username>/OS-Jackfruit.git
-cd OS-Jackfruit
-```
+* Long-running process
+* Creates and manages containers
+* Maintains container metadata
+* Handles CLI commands
+* Implements logging system
 
-### 2. Set Up Your VM
+### 2. Kernel Module (Kernel Space)
 
-You need an **Ubuntu 22.04 or 24.04** VM with **Secure Boot OFF**. WSL will not work.
+* Monitors memory usage (RSS)
+* Enforces soft and hard memory limits
+* Communicates with supervisor using ioctl
 
-Install dependencies:
+---
+
+## Key Features
+
+* Multi-container support
+* Process isolation using namespaces
+* Filesystem isolation using chroot
+* CLI-based container management
+* Logging using producer-consumer model
+* Kernel-level memory monitoring
+* Scheduling experiments using nice values
+* Proper cleanup with no zombie processes
+
+---
+
+## OS Concepts Demonstrated
+
+* Process creation (clone, fork, exec)
+* Process lifecycle and signals
+* IPC (pipes and UNIX domain sockets)
+* Synchronization (mutex, condition variables)
+* Producer-consumer problem
+* Memory management (RSS monitoring)
+* CPU scheduling (nice values)
+* Kernel-user space interaction (ioctl)
+
+---
+
+## Build and Setup Instructions
+
+### Step 1: Install dependencies
 
 ```bash
 sudo apt update
 sudo apt install -y build-essential linux-headers-$(uname -r)
 ```
 
-### 3. Run the Environment Check
-
-```bash
-cd boilerplate
-chmod +x environment-check.sh
-sudo ./environment-check.sh
-```
-
-Fix any issues reported before moving on.
-
-### 4. Prepare the Root Filesystem
-
-```bash
-mkdir rootfs-base
-wget https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/x86_64/alpine-minirootfs-3.20.3-x86_64.tar.gz
-tar -xzf alpine-minirootfs-3.20.3-x86_64.tar.gz -C rootfs-base
-
-# Make one writable copy per container you plan to run
-cp -a ./rootfs-base ./rootfs-alpha
-cp -a ./rootfs-base ./rootfs-beta
-```
-
-Do not commit `rootfs-base/` or `rootfs-*` directories to your repository.
-
-### 5. Understand the Boilerplate
-
-The `boilerplate/` folder contains starter files:
-
-| File                   | Purpose                                             |
-| ---------------------- | --------------------------------------------------- |
-| `engine.c`             | User-space runtime and supervisor skeleton          |
-| `monitor.c`            | Kernel module skeleton                              |
-| `monitor_ioctl.h`      | Shared ioctl command definitions                    |
-| `Makefile`             | Build targets for both user-space and kernel module |
-| `cpu_hog.c`            | CPU-bound test workload                             |
-| `io_pulse.c`           | I/O-bound test workload                             |
-| `memory_hog.c`         | Memory-consuming test workload                      |
-| `environment-check.sh` | VM environment preflight check                      |
-
-Use these as your starting point. You are free to restructure the repository however you want — the submission requirements are listed in the project guide.
-
-### 6. Build and Verify
+### Step 2: Build the project
 
 ```bash
 cd boilerplate
 make
 ```
 
-If this compiles without errors, your environment is ready.
+---
 
-### 7. GitHub Actions Smoke Check
-
-Your fork will inherit a minimal GitHub Actions workflow from this repository.
-
-That workflow only performs CI-safe checks:
-
-- `make -C boilerplate ci`
-- user-space binary compilation (`engine`, `memory_hog`, `cpu_hog`, `io_pulse`)
-- `./boilerplate/engine` with no arguments must print usage and exit with a non-zero status
-
-The CI-safe build command is:
+## Load Kernel Module
 
 ```bash
-make -C boilerplate ci
+sudo insmod monitor.ko
+ls -l /dev/container_monitor
 ```
-
-This smoke check does not test kernel-module loading, supervisor runtime behavior, or container execution.
 
 ---
 
-## What to Do Next
+## Prepare Root Filesystem
 
-Read [`project-guide.md`](project-guide.md) end to end. It contains:
+```bash
+mkdir rootfs-base
+wget https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/x86_64/alpine-minirootfs-3.20.3-x86_64.tar.gz
+tar -xzf alpine-minirootfs-3.20.3-x86_64.tar.gz -C rootfs-base
 
-- The six implementation tasks (multi-container runtime, CLI, logging, kernel monitor, scheduling experiments, cleanup)
-- The engineering analysis you must write
-- The exact submission requirements, including what your `README.md` must contain (screenshots, analysis, design decisions)
+cp -a rootfs-base rootfs-alpha
+cp -a rootfs-base rootfs-beta
+```
 
-Your fork's `README.md` should be replaced with your own project documentation as described in the submission package section of the project guide. (As in get rid of all the above content and replace with your README.md)
+---
+
+## Running the System
+
+### Start Supervisor (Terminal 1)
+
+```bash
+sudo ./engine supervisor ./rootfs-base
+```
+
+---
+
+### Start Containers (Terminal 2)
+
+```bash
+sudo ./engine start alpha ./rootfs-alpha /bin/sh
+sudo ./engine start beta ./rootfs-beta /bin/sh
+```
+
+---
+
+### View Running Containers
+
+```bash
+sudo ./engine ps
+```
+
+---
+
+### View Logs
+
+```bash
+sudo ./engine logs alpha
+```
+
+---
+
+### Stop Containers
+
+```bash
+sudo ./engine stop alpha
+sudo ./engine stop beta
+```
+
+---
+
+### Check Kernel Logs
+
+```bash
+dmesg | tail
+```
+
+---
+
+### Unload Module
+
+```bash
+sudo rmmod monitor
+```
+
+---
+
+## Task-wise Explanation
+
+### Task 1: Multi-Container Runtime
+
+The supervisor creates containers using clone(). Each container is an isolated process with its own namespace and filesystem.
+
+### Task 2: CLI and Control IPC
+
+A CLI client communicates with the supervisor using UNIX domain sockets. The supervisor processes commands such as start, stop, ps, and logs.
+
+### Task 3: Logging System
+
+Container output is captured using pipes. A producer thread reads output and pushes it into a bounded buffer. A consumer thread writes logs to files using synchronization mechanisms.
+
+### Task 4: Kernel Memory Monitoring
+
+A kernel module tracks memory usage of containers. Soft limit generates warnings, while hard limit kills the container.
+
+### Task 5: Scheduling Experiment
+
+Containers are executed with different nice values to observe Linux scheduling behavior.
+
+### Task 6: Resource Cleanup
+
+All processes, threads, and kernel data structures are properly cleaned to avoid zombies and memory leaks.
+
+---
+
+## Engineering Analysis
+
+### Isolation
+
+Containers use namespaces (PID, UTS, mount) and chroot to isolate processes and filesystem.
+
+### Process Management
+
+Supervisor manages lifecycle using clone, exec, and signal handling.
+
+### IPC and Synchronization
+
+Pipes and sockets are used for communication. Mutex and condition variables ensure safe concurrent logging.
+
+### Memory Management
+
+Kernel module monitors RSS and enforces limits to prevent resource exhaustion.
+
+### Scheduling
+
+Linux CFS scheduler is used. nice values influence CPU allocation.
+
+---
+
+## Design Decisions and Tradeoffs
+
+* Used clone instead of fork for namespace support
+* Used chroot for simplicity instead of pivot_root
+* Used pipes for logging due to simplicity and efficiency
+* Used kernel module for accurate memory enforcement
+
+---
+
+## Demo Instructions (Important for Evaluation)
+
+Use two systems:
+
+### System 1 (Code Explanation)
+
+* Show engine.c and monitor.c
+* Explain clone, chroot, logging, and kernel module
+
+### System 2 (Execution Demo)
+
+* Run supervisor
+* Start multiple containers
+* Show ps output
+* Show logs
+* Demonstrate memory limit violation
+* Show scheduling behavior using nice values
+* Show clean shutdown
+
+---
+
+## Expected Output Highlights
+
+* Multiple containers running simultaneously
+* Logs generated for each container
+* Memory warnings and kills visible in dmesg
+* Different CPU behavior based on nice values
+* No zombie processes after shutdown
+
+---
+
+## Conclusion
+
+This project successfully demonstrates how container runtimes work internally using fundamental operating system concepts. It provides a clear understanding of process isolation, memory management, IPC, and scheduling in Linux systems.
+
+---
